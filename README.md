@@ -74,11 +74,12 @@ worker name should be different for each worker, w1, w2, etc.:
     cd example
     ruby -w worker.rb -n w1 -b localhost
 
-On completion, you should see a log file named boss.log and one log file per worker.
+On completion, you should see a log file named **`boss.log`** and one log file per worker,
+**`w1.log`**, **`w2.log`**, etc.
 
 Some performance numbers are given below.
 
-** Performance:
+## Performance:
 
 The example application parses package descriptions on an Ubuntu Linux machine from the
 file `/var/lib/dpkg/status`. Here are some details of a couple of runs:
@@ -97,7 +98,7 @@ Column titles (except the first) are the number of workers.
   <tr><td>M2</td><td>3m 01s</td><td>1m 34s</td><td>1m 06s</td><td>0m 52s</td></tr>
 </table>
 
-** Contact
+## Contact
 
 I appreciate feedback, so if you have any questions, suggestions or patches, please
 send me email: amberarrow at gmail with the usual extension. Thanks.
