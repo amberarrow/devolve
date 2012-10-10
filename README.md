@@ -63,7 +63,20 @@ do the following after connecting:
        corresponding job object. This result string should _never_ be nil.
 
 The sample application under the __`example`__ subdirectory illustrates usage. It is
-intended to be run on an Ubuntu Linux system. Some performance numbers are given below.
+intended to be run on an Ubuntu Linux system. Run the boss like this:
+
+    cd example
+    ruby -w deb-pkg.rb
+
+Now run as many workers as you have cores, one in each terminal window where the
+worker name should be different for each worker, w1, w2, etc.:
+
+    cd example
+    ruby -w worker.rb -n w1 -b localhost
+
+On completion, you should see a log file named boss.log and one log file per worker.
+
+Some performance numbers are given below.
 
 ** Performance:
 
