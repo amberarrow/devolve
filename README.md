@@ -3,9 +3,9 @@
 ## Overview
 
 Devolve is a simple singleton class for a dynamic thread pool and associated job queue.
-The constructor is automatically invoked by the first call to __`instance()`__ and
+The constructor is automatically invoked by the first call to `instance()` and
 starts a listener thread that listens for worker connections on a configurable port. Client
-threads can add jobs by calling __`add()`__ at any time.
+threads can add jobs by calling `add()` at any time.
 
 When a worker connects, the pool listener spawns a new proxy thread dedicated to that
 worker and resumes listening. All proxy threads run an infinite loop performing these
@@ -21,11 +21,11 @@ Any number of workers may connect and process jobs; currently select() is used t
 for connections so that may limit the number of workers to 1024. When the select is
 replaced by epoll, this limit should go away.
 
-Any client thread can terminate the pool by invoking __`close()`__; this causes the pool
+Any client thread can terminate the pool by invoking `close()`; this causes the pool
 listener to write the __QUIT__ token to the job queue, wait for all worker proxy threads to
 end and then terminate; no new connections are accepted.
 
-Jobs enqueued must be objects that respond to __`get_work()`__ and __`put_result()`__
+Jobs enqueued must be objects that respond to `get_work()` and `put_result()`
 methods. The first must return a string that is sent to the worker; this can be a normal
 string or a string obtained by marshalling an object. The second should take a single
 argument which will be either:
@@ -33,10 +33,10 @@ argument which will be either:
   in the protocol or a bug in the worker code; or
 + the result string sent by the worker.
 
-The __`put_result()`__ method can re-enqueue the job if the argument is nil; if non-nil,
+The `put_result()` method can re-enqueue the job if the argument is nil; if non-nil,
 it can dispose of the result in any suitable way, for example, unmarshal the result (if
 it is not a plain string), write it to a file or a database, add it to objects, etc.
-The __`get_work()`__ method allows clients to delay fetching the actual data until it is
+The `get_work()` method allows clients to delay fetching the actual data until it is
 about to be sent to a worker without consuming memory while the job is in the queue. The
 application can decide whether this string is a plain string or one that needs to be
 unmarshalled into an object by the worker, the thread pool does not care.
@@ -44,13 +44,13 @@ unmarshalled into an object by the worker, the thread pool does not care.
 Each worker __must__ have a unique name, which should be a short string. Workers should
 do the following after connecting:
 
-1. Send the name using __`socket.puts`__.
+1. Send the name using `socket.puts`.
 
-2. Send the process id using __`socket.puts`__.
+2. Send the process id using `socket.puts`.
 
 3. Enter an infinite loop with these steps:
 
-    1. Read a short string  using __`socket.gets`__; if this string is the __QUIT__
+    1. Read a short string  using `socket.gets`; if this string is the __QUIT__
        token, close the socket and terminate. Otherwise, convert it to an integer,
        say n, denoting the size (in bytes) of the data string to come.
 
@@ -59,10 +59,10 @@ do the following after connecting:
        does not care).
 
     3. Process the input, wrap it in a __Result__ object, marshal that object and send it
-       back; it will be passed unchanged to the __`put_result()`__ method of the
+       back; it will be passed unchanged to the `put_result()` method of the
        corresponding job object. This result string should _never_ be nil.
 
-The sample application under the __`example`__ subdirectory illustrates usage. It is
+The sample application under the `example` subdirectory illustrates usage. It is
 intended to be run on an Ubuntu Linux system. Run the boss like this:
 
     cd example
@@ -81,7 +81,7 @@ Some performance numbers are given below.
 ** Performance:
 
 The example application parses package descriptions on an Ubuntu Linux machine from the
-file __`/var/lib/dpkg/status`__. Here are some details of a couple of runs:
+file `/var/lib/dpkg/status`. Here are some details of a couple of runs:
 
 Data file: /var/lib/dpkg/status on an Ubuntu 12.04 system with: 2239086 bytes,
 51317 lines, 2184 package stanzas.
