@@ -28,18 +28,19 @@ this causes the pool listener to write the __QUIT__ token to the job queue, wait
 worker proxy threads to
 end and then terminate; no new connections are accepted.
 
-Jobs enqueued must be objects that respond to <strong><code>get_work()</code></strong> and
-<strong><code>put_result()</code></strong> methods. The first must return a string that
+Jobs enqueued must be objects that respond to
+<strong><code>get\_work()</code></strong> and
+<strong><code>put\_result()</code></strong> methods. The first must return a string that
 is sent to the worker; this can be a normal string or the result of marshalling an
 object. The second should take a single argument which will be either:
 + __nil__, indicating that the worker crashed or some unexpected problem was encountered
   in the protocol or a bug in the worker code; or
 + the result string sent by the worker.
 
-The <strong><code>put_result()</code></strong> method can re-enqueue the job if the
+The <strong><code>put\_result()</code></strong> method can re-enqueue the job if the
 argument is __nil__; if non-__nil__, it can dispose of the result in any suitable way,
 for example, unmarshal the result (if it is not a plain string), write it to a file or a
-database, add it to objects, etc. The <strong><code>get_work()</code></strong> method
+database, add it to objects, etc. The <strong><code>get\_work()</code></strong> method
 allows clients to delay fetching the actual data until it is about to be sent to a worker
 without consuming memory while the job is in the queue. The application can decide whether
 this string is a plain string or one that needs to be unmarshalled into an object by the
@@ -64,7 +65,7 @@ do the following after connecting:
 
     3. Process the input, wrap it in a <strong><code>Result</code></strong> object,
        marshal that object and send it back to the boss; it will be passed unchanged to
-       the <strong><code>put_result()</code></strong> method of the corresponding job
+       the <strong><code>put\_result()</code></strong> method of the corresponding job
        object. Since the result string is a marshalled
        <strong><code>Result</code></strong>
        object, it should *never* be __nil__.
@@ -96,8 +97,8 @@ The example application parses package descriptions on an Ubuntu Linux machine f
 file <strong><code>/var/lib/dpkg/status</code></strong>. Here are some details of a
 couple of runs:
 
-Data file: /var/lib/dpkg/status on an Ubuntu 12.04 system with: 2239086 bytes,
-51317 lines, 2184 package stanzas.
+Data file: <b><code>/var/lib/dpkg/status</b></code> on an Ubuntu 12.04 system
+with: 2239086 bytes, 51317 lines, 2184 package stanzas.
 
 Machines: M1 = Intel Core i3 laptop, running Ubuntu 12.04; M2 = AMD Quad core Phenom
 desktop, running Ubuntu 10.04.
