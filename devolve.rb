@@ -53,8 +53,8 @@ class WorkerProxy
   def run
     log, pool = Log.instance, Devolve.instance
     loop {
-      job = pool.queue.pop     # blocks if queue is empty
-      if Constants::QUIT == job     # terminate
+      job = pool.queue.pop              # blocks if queue is empty
+      if Constants::QUIT == job         # terminate
         pool.queue << Constants::QUIT   # put it back so other threads can see it
         break
       end
@@ -109,7 +109,8 @@ class Devolve
   # queue       -- job queue
   # port        -- port to listen on for worker connections
   # thr_boss    -- master thread that listens for connections from workers
-  # thr_workers -- list of worker threads
+  # thr_workers -- list of pairs [p, t] where p is a WorkerProxy object and t the
+  #                associated thread.
   # closed      -- if true, pool is closed; main thread waits for all WorkerProxies to
   #                terminate and exits
   #
@@ -148,9 +149,9 @@ class Devolve
 
   # run by thread-pool listener thread:
   # -- open socket and listen for workers
-  # -- when a connection is made, create a Proxy thread for the worker and have it
+  # -- when a connection is made, create a WorkerProxy thread for the worker and have it
   #    pull jobs from the queue and run them
-  # -- terminate by invoking Thread.kill
+  # -- terminate by invoking close() or adding Constants::QUIT to job queue
   #
   def run
     log  = Log.instance
@@ -218,6 +219,7 @@ class Devolve
                 "ip/pid = #{proxy.peer}/#{proxy.remote_pid}"
       Thread.pass
     end  # loop
+    server.close
     wrapup
   end  # run
 
@@ -244,7 +246,8 @@ class Devolve
     @thr_workers = nil
   end  # wrapup
 
-  def add job    # add job to queue; adding Constants:QUIT terminates pool and all threads in it
+  # add job to queue; adding Constants:QUIT terminates pool and all threads in it
+  def add job
     @queue << job
   end  # add
   
@@ -263,7 +266,7 @@ end  # Devolve
 
 if $0 == __FILE__
   # trivial test: starts pool main thread which listens on socket but not much else
-  # see deb-pkg.rb for a more elaborate test
+  # see files under 'example' for a more elaborate test
   #
   Thread.current[ :name ] = 'main'
   pool = Devolve.instance

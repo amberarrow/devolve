@@ -22,21 +22,22 @@ Any number of workers may connect and process jobs; currently select() is used t
 for connections so that may limit the number of workers to 1024. When the select is
 replaced by epoll, this limit should go away.
 
-Any client thread can terminate the pool by invoking <strong><code>close()</code></strong>;
+Any client thread can terminate the pool by invoking
+<strong><code>close()</code></strong>;
 this causes the pool listener to write the __QUIT__ token to the job queue, wait for all
 worker proxy threads to
 end and then terminate; no new connections are accepted.
 
 Jobs enqueued must be objects that respond to <strong><code>get_work()</code></strong> and
 <strong><code>put_result()</code></strong> methods. The first must return a string that
-is sent to the worker; this can be a normal string or a string obtained by marshalling an
+is sent to the worker; this can be a normal string or the result of marshalling an
 object. The second should take a single argument which will be either:
-+ nil, indicating that the worker crashed or some unexpected problem was encountered
++ __nil__, indicating that the worker crashed or some unexpected problem was encountered
   in the protocol or a bug in the worker code; or
 + the result string sent by the worker.
 
 The <strong><code>put_result()</code></strong> method can re-enqueue the job if the
-argument is nil; if non-nil, it can dispose of the result in any suitable way,
+argument is __nil__; if non-__nil__, it can dispose of the result in any suitable way,
 for example, unmarshal the result (if it is not a plain string), write it to a file or a
 database, add it to objects, etc. The <strong><code>get_work()</code></strong> method
 allows clients to delay fetching the actual data until it is about to be sent to a worker
@@ -64,11 +65,12 @@ do the following after connecting:
     3. Process the input, wrap it in a <strong><code>Result</code></strong> object,
        marshal that object and send it back to the boss; it will be passed unchanged to
        the <strong><code>put_result()</code></strong> method of the corresponding job
-       object. Since the result string is a marshalled <strong><code>Result</code></strong>
-       object, it should _never_ be __nil__.
+       object. Since the result string is a marshalled
+       <strong><code>Result</code></strong>
+       object, it should *never* be __nil__.
 
 The sample application under the <strong><code>example</code></strong> subdirectory
-illustrates usage. It is intended to be run on an Ubuntu Linux system. Run the boss like
+illustrates usage. It is intended to be run on Ubuntu Linux systems. Run the boss like
 this:
 
     cd example
@@ -82,9 +84,9 @@ worker name should be different for each worker, w1, w2, etc.:
 
 Appending the <strong><code>-h</code></strong> option to either the boss or worker
 invocation will display a short summary of available options.
-On completion, you should see a log file named <b><code>boss.log</code></b>
-and one log file per worker, <b><code>w1.log</code></b>,
-<b><code>w2.log</code></b>, etc.
+On completion, you should see a short message indicating the number of package stanzas
+processed and log files named <b><code>boss.log</code></b>,
+<b><code>w1.log</code></b>, <b><code>w2.log</code></b>, etc.
 
 Some performance numbers are given below.
 
@@ -100,12 +102,18 @@ Data file: /var/lib/dpkg/status on an Ubuntu 12.04 system with: 2239086 bytes,
 Machines: M1 = Intel Core i3 laptop, running Ubuntu 12.04; M2 = AMD Quad core Phenom
 desktop, running Ubuntu 10.04.
 
+Each time is the average completion time of all the worker processes; this is a better
+indicator of performance than the completion time of the boss since the listener thread
+has a 30s socket timeout which makes timing unreliable. The times are also affected by
+the number of stanzas included in each job and controlled by the "-s" option; for example,
+worker completion times drop by half when we use "-s 8".
+
 Column titles (except the first) are the number of workers.
 
 <table border="1">
   <tr><th>Machine</th><th> 1</th><th> 2</th><th> 3</th><th> 4</th></tr>
-  <tr><td>M1</td><td>3m 04s</td><td>1m 35s</td><td>1m 21s</td><td>1m 15s</td></tr>
-  <tr><td>M2</td><td>3m 01s</td><td>1m 34s</td><td>1m 06s</td><td>0m 52s</td></tr>
+  <tr><td>M1</td><td>44s</td><td>22s</td><td>15s</td><td>11s</td></tr>
+  <tr><td>M2</td><td>32s</td><td>16s</td><td>11s</td><td>8s</td></tr>
 </table>
 
 ## Other similar tools

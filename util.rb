@@ -8,7 +8,6 @@ require 'logger'
 
 module Constants    # common constants
   DEF_QUEUE_SIZE = 5000                    # default job queue size
-  DEF_FILE       = '/var/lib/dpkg/status'  # default package data file
   DEF_PORT       = 11_111                  # default listener port on boss
 
   ACK, QUIT = 'ack', 'quit'    # acknowledge, quit tokens

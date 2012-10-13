@@ -2,7 +2,8 @@
 
 # Copyright 2012 Munagala V. Ramanath. All rights reserved.
 
-%w{ logger optparse ostruct singleton socket ../util.rb }.each{ |f| require f }
+# application _must_ provide compute.rb which has a suitable Worker#compute method
+%w{ optparse ostruct singleton socket ../util.rb ./compute.rb }.each{ |f| require f }
 
 # Example use of dynamic thread pool
 # Worker process for distributed parsing of debian package list
@@ -14,7 +15,7 @@ class Worker
   # -b : boss IP or hostname
   # -p : port (optional)
   #
-  @@options = OpenStruct.new( :name => nil, :boss => nil, :port => Constants::DEF_PORT )
+  @@options = OpenStruct.new( :name => nil, :boss => nil, :port => nil )
 
   # name   : name of worker (sent to boss)
   # socket : connection to boss
@@ -24,9 +25,11 @@ class Worker
   attr_reader :name, :socket, :port, :cnt
 
   def initialize    # assume all error checking already done
+    log = Log.instance
     @name   = @@options.name
-    @port   = @@options.port
-    @socket = TCPSocket.new @@options.boss, @@options.port
+    @port   = @@options.port ? @@options.port : Constants::DEF_PORT
+    log.info "Worker %s: Opening connection to %s:%d" % [@name, @@options.boss, @port]
+    @socket = TCPSocket.new @@options.boss, @port
     @cnt = 0
   end  # initialize
 
@@ -45,95 +48,6 @@ class Worker
     log.info msg
   end  # log_connection
 
-  # regular expressions for various fields
-  R_gen = /^([-0-9a-zA-Z]+):\s*(.*)$/o    # generic key value pair
-  R_con = /^\s+/o                         # continuation lines begin with white space
-
-  def parse stanza    # parse a package stanza and return hash of all key-value pairs
-    # The stanzas look like this:
-    #
-    # Package: xserver-xorg-input-vmmouse
-    # Status: install ok installed
-    # Priority: optional
-    # Section: x11
-    # Installed-Size: 176
-    # Maintainer: Ubuntu X-SWAT <ubuntu-x@lists.ubuntu.com>
-    # Architecture: amd64
-    # Version: 1:12.6.5-4ubuntu2
-    # Replaces: mdetect (<< 0.5.2.2), xserver-xorg (<< 6.8.2-35)
-    # Provides: xserver-xorg-input-7
-    # Depends: libc6 (>= 2.7), xserver-xorg-core (>= 2:1.6.99.900), xserver-xorg-input-mouse, udev
-    # Description: X.Org X server -- VMMouse input driver to use with VMWare
-    #  This package provides the driver for the X11 vmmouse input device.
-    #  .
-    #  The VMMouse driver enables support for the special VMMouse protocol
-    #  that is provided by VMware virtual machines to give absolute pointer
-    #  positioning.
-    #  .
-    #  The vmmouse driver is capable of falling back to the standard "mouse"
-    #  driver if a VMware virtual machine is not detected. This allows for
-    #  dual-booting of an operating system from a virtual machine to real hardware
-    #  without having to edit xorg.conf every time.
-    #  .
-    #  More information about X.Org can be found at:
-    #  <URL:http://www.X.org>
-    #  <URL:http://xorg.freedesktop.org>
-    #  <URL:http://lists.freedesktop.org/mailman/listinfo/xorg>
-    #  .
-    #  This package is built from the X.org xf86-input-vmmouse driver module.
-    # Original-Maintainer: Debian X Strike Force <debian-x@lists.debian.org>
-    #
-
-    # log     -- logger
-    # h       -- hash holding parsed results
-    # success -- true iff parsing was successful
-    # err_msg -- error message if parsing was not successful
-    # prev    -- previous value to append continuation lines
-    #
-    log, h, success, err_msg, prev = Log.instance, {}, true, nil, nil
-
-    log.debug "Job %d: stanza size %d" % [@cnt, stanza.size]
-    stanza.each_line{ |line|
-      # Don't do this since continuation lines start with a blank
-      # line.strip!
-      if line.empty?    # we should never see a blank line
-        err_msg = "Unexpected: blank line"
-        log.debug err_msg
-        success = false
-        break
-      end
-
-      if line !~ R_gen      # does not match "key: value" pattern
-        if line =~ R_con    # continuation line
-          if prev
-            prev += line    # append to previous value
-            next
-          end
-
-          err_msg = "No prev value to append continuation line"      # error
-          log.debug err_msg
-          success = false
-          break
-        end  # R_con match
-        # error
-        err_msg = "Match failed for: %s" % line
-        #log.debug err_msg
-        success = false
-        break
-      end
-
-      # we have a key-value pair
-      k, v = $1, $2
-      #log.debug "Match: key = %s, val = %s" % [k, v]
-      raise "Key #{k} already defined as #{h[k]}; v = #{v}" if h[ k ]
-      h[ k ] = prev = v
-    }
-    
-    pname = h[ 'Package' ]
-    log.debug "Job %d: %d pairs for package %s" % [@cnt, h.size, pname]
-    return Marshal.dump Result.new( success, err_msg, h )
-  end  # parse
-
   # entry point
   def run
     Thread.current[ :name ] = @name
@@ -145,15 +59,16 @@ class Worker
       # first, send our name, process id so server can uniquely identify us
       s.puts @name; s.puts $$
 
-      # main loop for processing stanzas
+      # main loop for processing jobs
       loop do
-        # get stanza string containing package description
+        # get data string ...
         data = Util.recv_str s
         break if Constants::QUIT == data
 
-        pkg = parse data
+        # ... pass it on to application function and get results ...
+        pkg = compute data
 
-        # send results to server
+        # ... and finally, send results to server
         Util.send_str s, pkg
         @cnt += 1
       end  # loop

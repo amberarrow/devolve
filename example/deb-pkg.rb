@@ -26,22 +26,19 @@ class Job
   #   put_result -- argument is the unmodified string from worker or nil which indicates
   #                 an unexpected error such as worker crash or bug
 
-  # i_beg -- start index into file
-  # i_end -- end index into file
-  #
-  attr :i_beg, :i_end
+  # pairs -- pairs of [start, end] indices into file for stanzas
+  attr :pairs
 
-  def initialize idx1, idx2    # args are beginning and end of package stanza
-    raise "file data is nil" if !@@file_data
-    sz = @@file_data.size
-    raise "Bad begin location: #{idx1}"      if idx1 < 0 || idx1 >= sz
-    raise "Bad end location: #{idx2}"        if idx2 < 0 || idx2 >= sz
-    raise "Unexpected: #{idx1} >= #{idx2}"   if idx1 >= idx2
-    @i_beg, @i_end = idx1, idx2
+  def initialize p    # array of index pairs: beginning, end of package stanza
+    raise "File data is nil" if !@@file_data
+    raise "Argument is nil" if !p
+    raise "No pairs" if p.empty?
+    @pairs = p
   end  # initialize
 
-  def get_work
-    @@file_data[ @i_beg ... @i_end ]    # return stanza
+  def get_work    # marshal array of stanzas
+    s = @@file_data
+    Marshal.dump @pairs.inject( [] ){ |m, (i, j)| m << s[ i ... j ] }
   end  # get_work
 
   def put_result r
@@ -55,40 +52,47 @@ class Job
       return
     end
 
-    # unmarshal result
+    # unmarshal result as a Result object
     result = Marshal.load r
     if !result.success
       log.error "Failed to parse stanza (%d,%d): %s" % [i_beg, i_end, result.err_msg]
       return
     end
 
-    # processing was successful
-    result = result.result
-    n, a = result[ 'Package' ], result[ 'Architecture' ]
-    raise "Package name missing" if !n           # should never happen
-    raise "Architecture missing" if !a           # should never happen
-    name, arch = n.strip, a.strip
-    raise "Package name blank" if name.empty?    # should never happen
-    raise "Architecture blank" if arch.empty?    # should never happen
-
-    # save result in global hash
+    # processing was successful; iterate over array of hashes
     @@mutex.synchronize {
-      key = [name, arch]
-      raise "Duplicate package: %s" % name if @@packages[ key ]
-      @@packages[ key ] = result
-      log.debug "Package: %s" % name
-    }
+      result.result.each{ |h|
+        n, a = h[ 'Package' ], h[ 'Architecture' ]
+        raise "Package name missing" if !n           # should never happen
+        raise "Architecture missing" if !a           # should never happen
+        name, arch = n.strip, a.strip
+        raise "Package name blank" if name.empty?    # should never happen
+        raise "Architecture blank" if arch.empty?    # should never happen
+
+        # save result in global hash
+        key = [name, arch]
+        raise "Duplicate package: %s" % name if @@packages[ key ]
+        @@packages[ key ] = h
+        log.debug "Package: %s" % name
+      }  # each
+    }    # mutex
   end  # put_result
 end  # Job
 
 # Extracts data about all installed packages
 module DebPkg
 
+  DEF_FILE = '/var/lib/dpkg/status'  # default package data file
+  DEF_JOB_SIZE = 4                   # max stanzas per job
+
   # commandline options parsed and stored here
   # -f : file of debian package description stanzas
   # -p : port (optional)
+  # -q : size of job queue
+  # -s : size of job (i.e. no. of stanzas per job)
   #
-  @@options = OpenStruct.new( :file => nil, :port => nil, :queue_size => nil )
+  @@options = OpenStruct.new( :file => nil, :port => nil, :queue_size => nil,
+                              :job_size => nil )
 
   @@file_data = nil
 
@@ -103,26 +107,36 @@ module DebPkg
 
   # find package stanza boundaries and enqueue jobs to parse them
   def self.parse pool    # arg is thread pool
-    # each stanza ends with a blank line, so look for double newlines
-    s = @@file_data
 
-    # cnt -- no. of jobs enqueued
     # pos -- beginning of next stanza
     # idx -- end of next stanza
     # len -- size of file
+    # max -- max no. of stanzas per job
+    # cnt -- no. of jobs
     #
-    cnt, pos, len = 0, 0, s.size
-    while pos < len do
+    max = @@options.job_size ? @@options.job_size : DEF_JOB_SIZE
+    s   = @@file_data
+    len = s.size
+    log = Log.instance
+    pos, cnt, stanzas = 0, 0, []
+    loop do
+      # each stanza ends with a blank line, so look for double newlines
       idx = s.index "\n\n", pos
       raise "Blank line not found after pos = #{pos}" if !idx
 
-      # create job and enqueue in pool
-      job = Job.new pos, idx
-      pool.add job
-      cnt += 1
-
+      stanzas << [pos, idx]                     # add stanza to current set
       pos = idx + 2
-    end  # while
+      next if pos < len && stanzas.size < max   # set not yet full and more data remains
+
+      # end of data or set full; enqueue job in either case
+      #log.debug "Creating job with: %s" % stanzas.to_s
+      job = Job.new stanzas       # create job and enqueue in pool
+      pool.add job
+      stanzas = []
+      cnt += 1
+      break if pos >= len
+    end  # loop
+    log.info "Queued %d jobs" % cnt
   end  # parse
 
   def self.parse_args    # parse commandline arguments
@@ -152,8 +166,16 @@ module DebPkg
       raise "Blank queue size" if q.empty?
       size = q.to_i
       raise "queue size too small: #{size}" if size < 1
-      raise "queue size  too large: #{size}" if port > 1_000_000_000
+      raise "queue size too large: #{size}" if size > 1_000_000_000
       @@options.queue_size = size
+    }
+    opt.on( '-s', '--job-size SIZE', 'size of job' ) { |s|
+      s.strip!
+      raise "Blank job size" if s.empty?
+      size = s.to_i
+      raise "job size too small: #{size}" if size < 1
+      raise "job size too large: #{size}" if size > 100
+      @@options.job_size = size
     }
 
     opt.parse ARGV
@@ -166,7 +188,7 @@ module DebPkg
   def self.go
     Log.init( :name => 'boss.log' )
     parse_args
-    path = @@options.file ? @@options.file : Constants::DEF_FILE
+    path = @@options.file ? @@options.file : DEF_FILE
     read_file path
 
     # initialize thread pool listener port if it different from the default
